@@ -56,9 +56,33 @@ class PaymentFormUpdate(BaseModel):
     currency: Optional[str]
 
 
-class PaymentFormResponse(BaseModel):
+class PaymentFormOut(BaseModel):
     id: int
     name: str
     description: str
     amount: float
     currency: str
+
+
+class PaymentBase(BaseModel):
+    amount: float
+
+
+class PaymentCreate(PaymentBase):
+    pass
+
+
+class PaymentOut(PaymentBase):
+    id: int
+
+    class Config:
+        orm_mode = True
+
+
+class PaymentHistory(BaseModel):
+    payment_id: int
+    amount: float
+    payment_form_id: int
+
+    class Config:
+        orm_mode = True
