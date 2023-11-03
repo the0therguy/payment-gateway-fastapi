@@ -36,3 +36,29 @@ class Token(BaseModel):
 
 class TokenPayload(BaseModel):
     sub: Optional[str] = None
+
+
+class PaymentFormBase(BaseModel):
+    name: str
+    description: str
+    amount: float
+    currency: str
+
+
+class PaymentFormCreate(PaymentFormBase):
+    pass
+
+
+class PaymentFormUpdate(BaseModel):
+    name: Optional[str]
+    description: Optional[str]
+    amount: Optional[float]
+    currency: Optional[str]
+
+
+class PaymentFormResponse(BaseModel):
+    id: int
+    name: str
+    description: str
+    amount: float
+    currency: str

@@ -1,12 +1,15 @@
-from fastapi import FastAPI, status, Response, HTTPException, Depends
+from fastapi import FastAPI, status, Response, Depends
+from fastapi.exceptions import HTTPException
 from database import engine, SessionLocal
 from sqlalchemy.orm import Session
 import models.models as models
 import schemas
 from utils.auth import get_password_hash, verify_password, create_access_token
 from models.base import Base
-from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
 from datetime import timedelta
+from pydantic import ValidationError
+from jose import jwt
 
 app = FastAPI()
 
@@ -20,6 +23,23 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/sign_in")
+
+
+async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> models.User:
+    try:
+        payload = jwt.decode(
+            token, 'this is a key', algorithms="HS256"
+        )
+        token_data = schemas.TokenPayload(**payload)
+    except (jwt.JWTError, ValidationError):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Could not validate credentials",
+        )
+    return db.query(models.User).filter(models.User.email == token_data.sub).first()
 
 
 @app.post("/signup", status_code=status.HTTP_201_CREATED)
@@ -49,6 +69,19 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
     access_token_expires = timedelta(minutes=30)
     access_token = create_access_token(user_info.email, access_token_expires)
     return {"access_token": access_token, "token_type": "bearer"}
+
+
+@app.post("/payment_forms", response_model=schemas.PaymentFormResponse)
+async def create_payment_form(payment_form: schemas.PaymentFormCreate, token: str = Depends(get_current_user),
+                              db: Session = Depends(get_db)):
+    # Validate the OAuth2 token here (replace with your actual token validation logic)
+
+    # Create a new PaymentForm in the database
+    db_payment_form = models.PaymentForm(**payment_form.dict(), user_id=token.id)
+    db.add(db_payment_form)
+    db.commit()
+    db.refresh(db_payment_form)
+    return schemas.PaymentFormResponse(**db_payment_form.__dict__)
 
 
 @app.get("/")
