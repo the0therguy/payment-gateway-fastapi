@@ -1,3 +1,5 @@
+import datetime
+
 from pydantic import BaseModel, EmailStr
 from pydantic.types import constr
 from typing import Optional
@@ -65,7 +67,9 @@ class PaymentFormOut(BaseModel):
 
 
 class PaymentBase(BaseModel):
+    applicant_name: str
     amount: float
+    created_at: datetime.date = datetime.date.today()
 
 
 class PaymentCreate(PaymentBase):
@@ -81,7 +85,9 @@ class PaymentOut(PaymentBase):
 
 class PaymentHistory(BaseModel):
     payment_id: int
+    applicant_name: str
     amount: float
+    created_at: datetime.date
     payment_form_id: int
 
     class Config:

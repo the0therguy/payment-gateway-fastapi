@@ -33,7 +33,9 @@ class Payment(BaseModel):
     __tablename__ = 'payments'
 
     id = Column(Integer, primary_key=True, index=True)
+    applicant_name = Column(String(100))
     amount = Column(Float)
+    created_at = Column(Date)
     form_id = Column(Integer, ForeignKey('payment_forms.id', ondelete="CASCADE"))
 
     payment_forms = relationship("PaymentForm", back_populates="payments")

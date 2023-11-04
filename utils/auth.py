@@ -2,7 +2,10 @@ from datetime import datetime, timedelta
 from typing import Any, Union
 from jose import jwt
 from passlib.context import CryptContext
+import os
+from dotenv import load_dotenv
 
+load_dotenv()
 
 password_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -18,7 +21,7 @@ def create_access_token(
         )
     to_encode = {"exp": expire, "sub": str(subject)}
     encoded_jwt = jwt.encode(
-        to_encode, 'this is a key', algorithm="HS256"
+        to_encode, os.environ.get("SECRET_KEY"), algorithm=os.environ.get("ALGORITHM")
     )
     return encoded_jwt
 

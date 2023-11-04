@@ -1,3 +1,4 @@
+# Import necessary modules and set up the FastAPI app
 from fastapi import FastAPI, status, Response, Depends
 from fastapi.exceptions import HTTPException
 from database import engine, SessionLocal
@@ -11,17 +12,21 @@ from datetime import timedelta
 from pydantic import ValidationError
 from jose import jwt
 from sqlalchemy.orm import joinedload
-
+import os
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = FastAPI()
 
+# Create the database tables
 Base.metadata.create_all(bind=engine)
 
 
-# Singleton design pattern
+# Function to get a database session (Singleton design pattern)
 def get_db():
     try:
         db = SessionLocal()
@@ -30,15 +35,17 @@ def get_db():
         db.close()
 
 
+# OAuth2 token scheme for authentication
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/sign_in")
 
 
+# Function to send payment notifications via email
 def send_payment_notification(email, amount):
-    # Configure your SMTP server and email settings
-    smtp_server = "smtp.gmail.com"
+    # Configure your SMTP server and email settings (use environment variables)
+    smtp_server = os.environ.get("smtp_server")
     smtp_port = 587
-    smtp_username = "fejanic.chowdhury@gmail.com"
-    smtp_password = "jqwvwhcwmuklogex"
+    smtp_username = os.environ.get("smtp_username")
+    smtp_password = os.environ.get("smtp_password")
 
     # Create the email message
     subject = "Payment Notification"
@@ -59,14 +66,10 @@ def send_payment_notification(email, amount):
         server.sendmail(sender_email, receiver_email, message.as_string())
 
 
-# Call send_payment_notification with the recipient's email and payment amount
-
-
+# Function to get the current user based on the provided token
 async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> models.User:
     try:
-        payload = jwt.decode(
-            token, 'this is a key', algorithms="HS256"
-        )
+        payload = jwt.decode(token, os.environ.get('SECRET_KEY'), algorithms=os.environ.get('ALGORITHM'))
         token_data = schemas.TokenPayload(**payload)
     except (jwt.JWTError, ValidationError):
         raise HTTPException(
@@ -76,12 +79,13 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
     return db.query(models.User).filter(models.User.email == token_data.sub).first()
 
 
+# Endpoint to handle user signup
 @app.post("/signup", status_code=status.HTTP_201_CREATED, response_model=schemas.UserOut)
 async def signup(user_in: schemas.UserCreate, db: Session = Depends(get_db)):
     email = user_in.email
     user = db.query(models.User).filter(models.User.email == email).first()
     if user:
-        raise HTTPException(status_code=400, detail="Book not found")
+        raise HTTPException(status_code=400, detail="User already exists")
     user_dict = user_in.dict(exclude={"password"})
     password = get_password_hash(user_in.password)
     user_dict.update({"password": password})
@@ -95,6 +99,7 @@ async def signup(user_in: schemas.UserCreate, db: Session = Depends(get_db)):
     })
 
 
+# Endpoint to handle user sign-in and issue access tokens
 @app.post("/sign_in", response_model=schemas.Token, status_code=status.HTTP_200_OK)
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user_info = db.query(models.User).filter(models.User.email == form_data.username).first()
@@ -108,6 +113,7 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
     return {"access_token": access_token, "token_type": "bearer"}
 
 
+# Endpoint to create a payment form
 @app.post("/payment_forms", response_model=schemas.PaymentFormOut, status_code=status.HTTP_201_CREATED)
 async def create_payment_form(payment_form: schemas.PaymentFormCreate, token: str = Depends(get_current_user),
                               db: Session = Depends(get_db)):
@@ -116,9 +122,16 @@ async def create_payment_form(payment_form: schemas.PaymentFormCreate, token: st
     db.add(db_payment_form)
     db.commit()
 
-    return schemas.PaymentFormOut(**db_payment_form.__dict__)
+    return schemas.PaymentFormOut(
+        id=db_payment_form.id,
+        name=db_payment_form.name,
+        description=db_payment_form.description,
+        amount=db_payment_form.amount,
+        currency=db_payment_form.currency
+    )
 
 
+# Endpoint to create a payment and send payment notification
 @app.post("/payments/{payment_form_id}", response_model=schemas.PaymentOut, status_code=status.HTTP_201_CREATED)
 async def create_payment(payment: schemas.PaymentCreate, payment_form_id: int, db: Session = Depends(get_db)):
     payment_form = db.query(models.PaymentForm).filter(models.PaymentForm.id == payment_form_id).first()
@@ -135,6 +148,7 @@ async def create_payment(payment: schemas.PaymentCreate, payment_form_id: int, d
     return db_payment
 
 
+# Endpoint to get payment history for the current user
 @app.get("/payment_history", response_model=list[schemas.PaymentHistory], status_code=status.HTTP_200_OK)
 async def get_payment_history(token: str = Depends(get_current_user), db: Session = Depends(get_db)):
     # Get all payments for the user
@@ -143,16 +157,7 @@ async def get_payment_history(token: str = Depends(get_current_user), db: Sessio
     payment_history = []
     for payment in payments:
         payment_history.append(
-            schemas.PaymentHistory(payment_id=payment.id, payment_form_id=payment.form_id, amount=payment.amount))
+            schemas.PaymentHistory(payment_id=payment.id, payment_form_id=payment.form_id, amount=payment.amount,
+                                   applicant_name=payment.applicant_name, created_at=payment.created_at))
 
     return payment_history
-
-
-@app.get("/")
-async def root():
-    return {"message": "Hello World"}
-
-
-@app.get("/hello/{name}")
-async def say_hello(name: str):
-    return {"message": f"Hello {name}"}
